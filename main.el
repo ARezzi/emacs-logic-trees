@@ -13,7 +13,7 @@
 (defun operator-to-precedence
     (op)
   "Takes an operator and returns its precedence, with the highest
-   precendece being 0. The lower the precendce the higher the number."
+   precendece being 0. The lower the precedence the higher the number."
   (cond
    ((eq 'rightarrow op) 0)
    ((eq 'and op) 1)
@@ -204,29 +204,29 @@
     (list (car logic) (move-expression (cadr logic) i 'right))))
 
 (defun index-is-functionable (logic i left-or-right)
-    "(I ran out of names). It returns non-nil if the index is 
+  "(I ran out of names). It returns non-nil if the index is 
 at the end of the list of left exps. or at the beginnign of the list of
 right exps."
-    (if (eq left-or-right 'left)
-	(eq i (1- (length (car logic))))
-      (eq i 0)))
+  (if (eq left-or-right 'left)
+      (eq i (1- (length (car logic))))
+    (eq i 0)))
 
 (defun step-logic (logic)
   "Either moves an expression or applies a function and returns the results"
   (let
       ((best-exp (get-best-exp logic)))
     (if (index-is-functionable logic (car best-exp) (cadr best-exp))
-    (apply-function
-     (mapcar
-      (lambda (x)
-	(mapcar #'parse-expression x))
-      logic)
-     (cadr best-exp))
-    (list (move-expression-logic
-       logic
-       (car best-exp)
-       (cadr best-exp)))
-    )))
+	(apply-function
+	 (mapcar
+	  (lambda (x)
+	    (mapcar #'parse-expression x))
+	  logic)
+	 (cadr best-exp))
+      (list (move-expression-logic
+	     logic
+	     (car best-exp)
+	     (cadr best-exp)))
+      )))
 
 
 (defun get-best-exp (logic)
@@ -266,6 +266,6 @@ right exps."
    seq))
 
 (message "%S"
-	   (mapcar (lambda (x) (step-logic (car x))) (mapcar #'step-logic (step-logic (car (step-logic (car (step-logic (parse-logic
-	    "(A \\& C), \\neg (B \\& C), C, A \\vdash A, B")))))))))
+	 (mapcar (lambda (x) (step-logic (car x))) (mapcar #'step-logic (step-logic (car (step-logic (car (step-logic (parse-logic
+														       "(A \\& C), \\neg (B \\& C), C, A \\vdash A, B")))))))))
 
