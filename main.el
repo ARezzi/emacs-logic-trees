@@ -161,7 +161,7 @@
       (if (eq left-or-right 'right)
 	  (list
 	   (list
-	    (append (list (car logic)) (list (cadr exp)))
+	    (append (car logic) (list (cadr exp)))
 	    (append (cddr exp) (cdadr logic))))
 	(list
 	 (list
@@ -225,8 +225,7 @@ right exps."
       (list (move-expression-logic
 	     logic
 	     (car best-exp)
-	     (cadr best-exp)))
-      )))
+	     (cadr best-exp))))))
 
 
 (defun get-best-exp (logic)
@@ -243,10 +242,11 @@ right exps."
 	 (seq-map-indexed
 	  (lambda (x i) (exp-heuristic x i 'right))
 	  (cadr logic)))))
-    (if
-	(> (cadr left-best) (cadr right-best))
-	(list (car left-best) 'left)
-      (list (car right-best) 'right))))
+    (cond
+     ((eq right-best nil) (list (car left-best) 'left))
+     ((eq left-best nil) (list (car right-best) 'right))
+     ((> (cadr left-best) (cadr right-best)) (list (car left-best) 'left))
+     ('t (list (car right-best) 'right)))))
 
 (defun exp-heuristic (exp i left-or-right)
   "Heurisitc"
@@ -254,18 +254,31 @@ right exps."
    i
    (cond
     ((is-complete-expression exp) -10000) ;; if it's a complete exp. it is not the best exp to analyze at all
-    ((eq left-or-right 'left) i) ;; if it's left, higher the index the better it is
+    ((eq left-or-right 'left) i) ;; if it's on the left, higher the index the better it is
     ((eq left-or-right 'right) (- i))))) ;; if it's on the right, the lower the index the better.
 
 (defun max-cadr (seq)
-  (cl-reduce
-   (lambda (x y)
-     (if
-	 (> (cadr x) (cadr y))
-	 x y))
-   seq))
+  (unless (zerop (length seq))
+    (cl-reduce
+     (lambda (x y)
+       (if
+	   (> (cadr x) (cadr y))
+	   x y))
+     seq)))
 
-(message "%S"
-	 (mapcar (lambda (x) (step-logic (car x))) (mapcar #'step-logic (step-logic (car (step-logic (car (step-logic (parse-logic
-														       "(A \\& C), \\neg (B \\& C), C, A \\vdash A, B")))))))))
+(defun logic-is-done (logic)
+  (and
+   (cl-every (lambda (x) (is-complete-expression x)) (car logic))
+   (cl-every (lambda (x) (is-complete-expression x)) (cadr logic))))
+
+(defun solve-logic (logic)
+  (if (logic-is-done logic)
+      logic
+    (let ((solved-logic (step-logic logic)))
+      (if (= (length solved-logic) 1)
+	  (solve-logic (car solved-logic))
+	(mapcar #'solve-logic solved-logic)))))
+
+(message "%S" (solve-logic (parse-logic "\\vdash \\neg (B \\vee C \\rightarrow \\neg (C \\rightarrow C) \\& B)")))
+
 
