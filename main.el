@@ -48,6 +48,37 @@
 	(remove-outer-parentheses
 	 (substring str 1 (1- (length str))))
       str)))
+(defun remove-outer-parentheses (str)
+  "Trims the expression of any white spaces and removes the first and last
+   if they're respectively an ( and a ) character"
+  (let ((str (string-trim str)))
+    (if
+	(and
+	 (= (elt str 0) (string-to-char "("))
+	 (= (get-matching-parenthesis str 0) (1- (length str))))
+	(remove-outer-parentheses
+	 (substring str 1 (1- (length str))))
+      str)))
+
+(defun get-matching-parenthesis (str n)
+  "Very ugly hack but it works"
+  (caddr
+   (cl-reduce
+    (lambda
+      (x y) ; x = (index paren-count result)
+      (list (1+ (car x))
+	    (cond
+	     ((= y (string-to-char "(")) (1+ (cadr x)))
+	     ((= y (string-to-char ")")) (1- (cadr x)))
+	     ('t (cadr x)))
+	    (if
+		(and
+		 (= y (string-to-char ")"))
+		 (= (cadr x) 1)
+		 (not (caddr x)))
+		(car x)
+	      (caddr x))))
+    (substring str n) :initial-value '(0 0))))
 
 (defun parse-expression
     (str)
@@ -94,6 +125,7 @@
 	    str
 	    (string-match "\s" str (cadr operator-delimiter))))))))))
 
+
 (defun string-find-chars (str c)
   "Get a list with the indices of where in the string c is present"
   (car
@@ -126,11 +158,26 @@
       (lambda (x) (= x (string-to-char ")")))
       substr))))
 
+(defun generate-label (logic left-or-right)
+  (let
+      ((op
+	(car (cond
+	      ((eq left-or-right 'left) (car (last (car logic))))
+	      ((eq left-or-right 'right) (caadr logic))))))
+    (string-join
+     (list
+      (operator-to-string op)
+      "-"
+      (if
+	  (eq left-or-right 'left)
+	  "S"
+	"D")))))
+
 (defun apply-function (logic left-or-right)
   "Applies a function. Logic is a `parse-logic`-like formatted list, with
    the outermost left or innermost right expression parsed with 
    parse-expression, depending if left-or-right is 'left or 'right.
-   The target expression must not be a complete expression"
+   The target expression must not be a complete expression."
   (let
       ((exp 
 	(cond
@@ -221,18 +268,28 @@ right exps."
 (defun step-logic (logic)
   "Either moves an expression or applies a function and returns the results"
   (let
-      ((best-exp (get-best-exp logic)))
+      ((best-exp (get-best-exp logic))
+       (parsed-logic
+	(mapcar
+	 (lambda (x)
+	   (mapcar #'parse-expression x))
+	 logic)))
     (if (index-is-functionable logic (car best-exp) (cadr best-exp))
-	(apply-function
-	 (mapcar
-	  (lambda (x)
-	    (mapcar #'parse-expression x))
-	  logic)
-	 (cadr best-exp))
-      (list (move-expression-logic
-	     logic
-	     (car best-exp)
-	     (cadr best-exp))))))
+	(list
+	 (apply-function
+	  parsed-logic
+	  (cadr best-exp))
+	 (generate-label parsed-logic (cadr best-exp)))
+      (list (list (move-expression-logic
+		   logic
+		   (car best-exp)
+		   (cadr best-exp)))
+	    (string-join
+	     (list
+	      "sc_{"
+	      (if (eq (cadr best-exp) 'left)
+		  "sx}"
+		"dx}")))))))
 
 
 (defun get-best-exp (logic)
@@ -278,42 +335,34 @@ right exps."
    (cl-every (lambda (x) (is-complete-expression x)) (car logic))
    (cl-every (lambda (x) (is-complete-expression x)) (cadr logic))))
 
-(defun solve-logic (logic)
-  (if (logic-is-done logic)
-      logic
-    (let ((solved-logic (step-logic logic)))
-      (if (= (length solved-logic) 1)
-	  (solve-logic (car solved-logic))
-	(mapcar #'solve-logic solved-logic)))))
-
 (defun logic-to-str (logic)
   (string-join
    (list 
-   (cl-reduce
-    (lambda (x y)
-      (string-join
-       (list x (expr-to-str y))
-       (if
-	   (zerop (length x))
-	   ""
-	 ", ")))
-    (car logic) :initial-value "")
-   " \\vdash "
-   (cl-reduce
-    (lambda (x y)
-      (string-join
-       (list x (expr-to-str y))
-       (if (zerop (length x))
-	   ""
-	 ", ")))
-    (cadr logic) :initial-value ""))))
+    (cl-reduce
+     (lambda (x y)
+       (string-join
+	(list x (expr-to-str y))
+	(if
+	    (zerop (length x))
+	    ""
+	  ", ")))
+     (car logic) :initial-value "")
+    " \\vdash "
+    (cl-reduce
+     (lambda (x y)
+       (string-join
+	(list x (expr-to-str y))
+	(if (zerop (length x))
+	    ""
+	  ", ")))
+     (cadr logic) :initial-value ""))))
 
 (defun expr-to-str (expr)
   (cond
    ((stringp expr) (string-trim expr))
    ((eq (car expr) 'not) (string-join (list "\\neg " (cadr expr))))
    ('t  (string-join
-	  (list 
+	 (list 
 	  (cadr expr)
 	  (operator-to-string (car expr))
 	  (caddr expr)) " "))))
@@ -327,30 +376,37 @@ right exps."
 (defun generate-tree (logic)
   (if (logic-is-done logic)
       (string-join (list "\\AxiomC{$"(logic-to-str logic) "$}\n"))
-    (let
-	((next-step (step-logic logic)))
+    (let*
+	( (stepped-logic (step-logic logic))
+	  (next-step (car stepped-logic))
+	  (label (cadr stepped-logic)))
       (string-join
        (if
 	   (= (length next-step) 1)
-       (list
-	(generate-tree
-	 (car
-	  next-step))
-	"\\UnaryInfC{$"
-	(logic-to-str logic)
-	"$}\n")
-       (list
-	(generate-tree
-	 (car
-	  next-step))
-	(generate-tree (cadr next-step))
-	"\\BinaryInfC{$"
-	(logic-to-str logic)
-	"$}\n")
-       )))))
+	   (list
+	    (generate-tree
+	     (car
+	      next-step))
+	    "\\RightLabel{$"
+	    label
+	    "$}\n"
+	    "\\UnaryInfC{$"
+	    (logic-to-str logic)
+	    "$}\n")
+	 (list
+	  (generate-tree
+	   (car
+	    next-step))
+	  (generate-tree (cadr next-step))
+	  "\\RightLabel{$"
+	  label
+	  "$}\n"
+	  "\\BinaryInfC{$"
+	  (logic-to-str logic)
+	  "$}\n")
+	 )))))
 
 (parse-expression "\\neg \\neg A")
-(message "%s" (step-logic (parse-logic "\\neg \\neg ( \\neg B \\vee M) \\vdash")))
 
 (require 'tex-mode)
 (bind-key "C-c C-e" #'generate-logic #'tex-mode-map)
