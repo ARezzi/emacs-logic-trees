@@ -64,7 +64,7 @@
 	    (cl-reduce
 	     (lambda (x y)
 	       (if
-		   (<
+		   (<=
 		    (operator-to-precedence (car x))
 		    (operator-to-precedence (car y)))
 		   x
@@ -326,19 +326,32 @@ right exps."
 
 (defun generate-tree (logic)
   (if (logic-is-done logic)
-      (string-join (list "\\AxiomC{"(logic-to-str logic) "}\n"))
-    (string-join
-     (list
-      (generate-tree
-       (car
-	(step-logic logic)))
-      "\\UnaryInfC{"
-      (logic-to-str logic)
-      "}\n"))))
+      (string-join (list "\\AxiomC{$"(logic-to-str logic) "$}\n"))
+    (let
+	((next-step (step-logic logic)))
+      (string-join
+       (if
+	   (= (length next-step) 1)
+       (list
+	(generate-tree
+	 (car
+	  next-step))
+	"\\UnaryInfC{$"
+	(logic-to-str logic)
+	"$}\n")
+       (list
+	(generate-tree
+	 (car
+	  next-step))
+	(generate-tree (cadr next-step))
+	"\\BinaryInfC{$"
+	(logic-to-str logic)
+	"$}\n")
+       )))))
 
-(message "%s"
-	 (generate-tree
-	  (parse-logic "B \\rightarrow C \\vdash B \\vee C ")))
+(parse-expression "\\neg \\neg A")
+(message "%s" (step-logic (parse-logic "\\neg \\neg ( \\neg B \\vee M) \\vdash")))
+
 (require 'tex-mode)
 (bind-key "C-c C-e" #'generate-logic #'tex-mode-map)
 
