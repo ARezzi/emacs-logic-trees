@@ -10,6 +10,13 @@
    ((string-equal str "\\vee") 'or)
    ((string-equal str "\\neg") 'not)))
 
+(defun operator-to-string (op)
+  (cond
+   ((eq op 'rightarrow) "\\rightarrow")
+   ((eq op 'and) "\\&")
+   ((eq op 'or) "\\vee")
+   ((eq op 'not) "\\neg")))
+
 (defun operator-to-precedence
     (op)
   "Takes an operator and returns its precedence, with the highest
@@ -279,6 +286,59 @@ right exps."
 	  (solve-logic (car solved-logic))
 	(mapcar #'solve-logic solved-logic)))))
 
-(message "%S" (solve-logic (parse-logic "\\vdash \\neg (B \\vee C \\rightarrow \\neg (C \\rightarrow C) \\& B)")))
+(defun logic-to-str (logic)
+  (string-join
+   (list 
+   (cl-reduce
+    (lambda (x y)
+      (string-join
+       (list x (expr-to-str y))
+       (if
+	   (zerop (length x))
+	   ""
+	 ", ")))
+    (car logic) :initial-value "")
+   " \\vdash "
+   (cl-reduce
+    (lambda (x y)
+      (string-join
+       (list x (expr-to-str y))
+       (if (zerop (length x))
+	   ""
+	 ", ")))
+    (cadr logic) :initial-value ""))))
 
+(defun expr-to-str (expr)
+  (cond
+   ((stringp expr) (string-trim expr))
+   ((eq (car expr) 'not) (string-join (list "\\neg " (cadr expr))))
+   ('t  (string-join
+	  (list 
+	  (cadr expr)
+	  (operator-to-string (car expr))
+	  (caddr expr)) " "))))
+
+(defun generate-logic (str)
+  (interactive "M")
+  (insert "\\begin{prooftree}\n")
+  (insert (generate-tree (parse-logic str)))
+  (insert "\\end{prooftree}\n"))
+
+(defun generate-tree (logic)
+  (if (logic-is-done logic)
+      (string-join (list "\\AxiomC{"(logic-to-str logic) "}\n"))
+    (string-join
+     (list
+      (generate-tree
+       (car
+	(step-logic logic)))
+      "\\UnaryInfC{"
+      (logic-to-str logic)
+      "}\n"))))
+
+(message "%s"
+	 (generate-tree
+	  (parse-logic "B \\rightarrow C \\vdash B \\vee C ")))
+(require 'tex-mode)
+(bind-key "C-c C-e" #'generate-logic #'tex-mode-map)
 
