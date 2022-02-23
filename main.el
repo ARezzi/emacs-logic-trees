@@ -335,8 +335,8 @@ right exps."
      (cl-some
       (lambda (y)
 	(string-equal
-	 (remove-outer-parentheses y)
-	 (remove-outer-parentheses x)))
+	 (remove-outer-parentheses (expr-to-str y))
+	 (remove-outer-parentheses (expr-to-str x))))
       (cadr logic)))
    (car logic)))
 
