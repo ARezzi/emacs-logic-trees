@@ -291,7 +291,6 @@ right exps."
 		  "sx}"
 		"dx}")))))))
 
-
 (defun get-best-exp (logic)
   "Returns a list with the index of the best expression and
 'left or 'right"
@@ -330,14 +329,27 @@ right exps."
 	   x y))
      seq)))
 
+(defun is-axiom (logic)
+  (cl-some
+   (lambda (x)
+     (cl-some
+      (lambda (y)
+	(string-equal
+	 (remove-outer-parentheses y)
+	 (remove-outer-parentheses x)))
+      (cadr logic)))
+   (car logic)))
+
 (defun logic-is-done (logic)
-  (and
-   (cl-every (lambda (x) (is-complete-expression x)) (car logic))
-   (cl-every (lambda (x) (is-complete-expression x)) (cadr logic))))
+  (or
+   (is-axiom logic)
+   (and
+    (cl-every #'is-complete-expression (car logic))
+    (cl-every #'is-complete-expression (cadr logic)))))
 
 (defun logic-to-str (logic)
   (string-join
-   (list 
+   (list
     (cl-reduce
      (lambda (x y)
        (string-join
@@ -362,7 +374,7 @@ right exps."
    ((stringp expr) (string-trim expr))
    ((eq (car expr) 'not) (string-join (list "\\neg " (cadr expr))))
    ('t  (string-join
-	 (list 
+	 (list
 	  (cadr expr)
 	  (operator-to-string (car expr))
 	  (caddr expr)) " "))))
@@ -375,7 +387,14 @@ right exps."
 
 (defun generate-tree (logic)
   (if (logic-is-done logic)
-      (string-join (list "\\AxiomC{$"(logic-to-str logic) "$}\n"))
+      (let ((is-axiom (is-axiom logic)))
+	(string-join
+	 (list "\\AxiomC{$"
+	       (when is-axiom
+		 "\\overset{ax-id}{")
+	       (logic-to-str logic)
+	       (when is-axiom "}")
+	       "$}\n")))
     (let*
 	( (stepped-logic (step-logic logic))
 	  (next-step (car stepped-logic))
@@ -403,10 +422,7 @@ right exps."
 	  "$}\n"
 	  "\\BinaryInfC{$"
 	  (logic-to-str logic)
-	  "$}\n")
-	 )))))
-
-(parse-expression "\\neg \\neg A")
+	  "$}\n"))))))
 
 (require 'tex-mode)
 (bind-key "C-c C-e" #'generate-logic #'tex-mode-map)
