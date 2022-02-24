@@ -1,4 +1,12 @@
+;; Known issues:
+;; The code is ugly.
+;; step-stop is not functional
+;; Multi dimensional functions only work if you put ; instead of , (can be fixed by changing the parse-logic function)
+;; Until then this will not be merged into master
+
 (require 'cl-lib)
+
+(defvar step-stop nil)
 
 (defun string-to-operator
     (str)
@@ -8,14 +16,18 @@
    ((string-equal str "\\rightarrow") 'rightarrow)
    ((string-equal str "\\&") 'and)
    ((string-equal str "\\vee") 'or)
-   ((string-equal str "\\neg") 'not)))
+   ((string-equal str "\\neg") 'not)
+   ((string-equal str "\\exists") 'exists)
+   ((string-equal str "\\forall") 'forall)))
 
 (defun operator-to-string (op)
   (cond
    ((eq op 'rightarrow) "\\rightarrow")
    ((eq op 'and) "\\&")
    ((eq op 'or) "\\vee")
-   ((eq op 'not) "\\neg")))
+   ((eq op 'not) "\\neg")
+   ((eq op 'exists) "\\exists")
+   ((eq op 'forall) "\\forall")))
 
 (defun operator-to-precedence
     (op)
@@ -25,7 +37,9 @@
    ((eq 'rightarrow op) 0)
    ((eq 'and op) 1)
    ((eq 'or op) 1)
-   ((eq 'not op) 2)))
+   ((eq 'not op) 2)
+   ((eq 'exists op) 2)
+   ((eq 'forall op) 2)))
 
 (defun parse-logic (line)
   "Parses a logic expression and returns a nested list like so: 
@@ -116,15 +130,29 @@
 		(string-find-chars str (string-to-char "\\"))))))))
 	(cl-remove-if-not
 	 #'identity
-	 (list
-	  (car operator-delimiter)
-	  (unless (eq (car operator-delimiter) 'not)
-	    (string-trim (substring str 0 (cadr operator-delimiter))))
-	  (string-trim
-	   (substring
-	    str
-	    (string-match "\s" str (cadr operator-delimiter))))))))))
-
+	 (if
+	     (or
+	      (eq 'forall (car operator-delimiter))
+	      (eq 'exists (car operator-delimiter)))
+	     (let* (( thing
+		      (string-trim
+		       (substring
+			str
+			(string-match "\s" str (cadr operator-delimiter)))))
+		    (i (string-match "\s" thing)))
+	       
+	       (list
+		(car operator-delimiter)
+		(substring thing 0 i)
+		(substring thing (1+ i))))
+	   (list
+	    (car operator-delimiter)
+	    (unless (eq (car operator-delimiter) 'not)
+	      (string-trim (substring str 0 (cadr operator-delimiter))))
+	    (string-trim
+	     (substring
+	      str
+	      (string-match "\s" str (cadr operator-delimiter)))))))))))
 
 (defun string-find-chars (str c)
   "Get a list with the indices of where in the string c is present"
@@ -234,7 +262,93 @@
 	(list
 	 (list
 	  (append (car logic) (cdr exp))
-	  (cdadr logic))))))))
+	  (cdadr logic)))))
+     ((eq (car exp) 'forall)
+      (if
+	  (eq left-or-right 'right)
+	  (list
+	   (list
+	    (car logic)
+	    (cons
+	     (replace-regexp-in-string
+	      (string-join
+	       (list
+		"[\s(,;]\\(" (cadr exp) "\\)[\s),;]"))
+	      (get-new-variable logic)
+	      (caddr exp) nil nil 1)
+	     (cdadr logic))))
+	(list
+	 (list
+	  (cl-remove-if-not
+	   #'identity
+	   (append
+	    (car logic)
+	    (let ((var (interactively-get-variable logic)))
+	      (list
+	       (when var
+		 (replace-regexp-in-string
+		  (string-join
+		   (list "[\s(,;]\\(" (cadr exp) "\\)[\s),;]"))
+		  var
+		  (caddr exp) nil nil 1))))))
+	  (cadr logic)))))
+     ((eq (car exp) 'exists)
+      (if
+	  (eq left-or-right 'left)
+	  (list
+	   (list
+	    (append
+	     (butlast (car logic))
+	     (list (replace-regexp-in-string
+		    (string-join
+		     (list
+		      "[\s(,;]\\(" (cadr exp) "\\)[\s),;]"))
+		    (get-new-variable logic)
+		    (caddr exp) nil nil 1)))
+	    (cadr logic)))
+	(list
+	 (list
+	  (car logic)
+	  (cl-remove-if-not
+	   #'identity
+	   (append
+	    (let ((var (interactively-get-variable logic)))
+	      (list
+	       (when var
+		 (replace-regexp-in-string
+		  (string-join
+		   (list "[\s(,;]\\(" (cadr exp) "\\)[\s),;]"))
+		  var
+		  (caddr exp) nil nil 1))))
+	    (cadr logic))))))))))
+
+
+(defun interactively-get-variable (logic)
+  (interactive)
+  (let
+      ((read-str (read-string
+		  (format "Select a variable. %s is the exp"
+			  (logic-to-str logic)))))
+    (if
+	(string-equal read-str "")
+	(progn (setq step-stop 't) nil)
+      read-str)))
+
+(defun get-new-variable
+    (logic &optional i)
+  (if (string-match
+       (string-join
+	(list
+	 "[\s(]x"
+	 (when i "_")
+	 (when i (number-to-string i))
+	 "[\s)]"))
+       (logic-to-str logic))
+      (get-new-variable logic (1+ (if i i -1)))
+    (if i
+	(string-join (list "x_" (number-to-string i)))
+      "x")))
+
 
 (defun move-expression
     (exps i left-or-right)
@@ -373,6 +487,12 @@ right exps."
   (cond
    ((stringp expr) (string-trim expr))
    ((eq (car expr) 'not) (string-join (list "\\neg " (cadr expr))))
+   ((or (eq (car expr) 'forall) (eq (car expr) 'exists))
+    (string-join
+     (list
+      (operator-to-string (car expr))
+      (cadr expr)
+      (caddr expr)) " "))
    ('t  (string-join
 	 (list
 	  (cadr expr)
@@ -386,15 +506,17 @@ right exps."
   (insert "\\end{prooftree}\n"))
 
 (defun generate-tree (logic)
-  (if (logic-is-done logic)
-      (let ((is-axiom (is-axiom logic)))
-	(string-join
-	 (list "\\AxiomC{$"
-	       (when is-axiom
-		 "\\overset{ax-id}{")
-	       (logic-to-str logic)
-	       (when is-axiom "}")
-	       "$}\n")))
+  (if (or step-stop (logic-is-done logic))
+      (progn
+	(setq step-stop nil)
+	(let ((is-axiom (is-axiom logic)))
+	  (string-join
+	   (list "\\AxiomC{$"
+		 (when is-axiom
+		   "\\overset{ax-id}{")
+		 (logic-to-str logic)
+		 (when is-axiom "}")
+		 "$}\n"))))
     (let*
 	( (stepped-logic (step-logic logic))
 	  (next-step (car stepped-logic))
