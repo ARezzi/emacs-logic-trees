@@ -1,7 +1,6 @@
 ;; Known issues:
 ;; The code is ugly.
 ;; step-stop is not functional
-;; Multi dimensional functions only work if you put ; instead of , (can be fixed by changing the parse-logic function)
 ;; Until then this will not be merged into master
 
 (require 'cl-lib)
@@ -48,7 +47,7 @@
   (mapcar
    (lambda (x)
      (unless (= (length (string-trim x)) 0)
-       (split-string x ",")))
+       (split-string x ",(?![^(]*\))")))
    (split-string line "\\\\vdash")))
 
 (defun remove-outer-parentheses (str)
